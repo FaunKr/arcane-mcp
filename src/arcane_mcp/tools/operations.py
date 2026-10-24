@@ -9,9 +9,9 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
+from ..mode import redact
 from ..safety import (
     ToolClass,
-    compute_operation_hash,
     compute_resource_hash,
     get_audit_log,
     get_token_store,
@@ -95,9 +95,9 @@ def register(mcp: FastMCP) -> None:
         client = require_client()
         endpoint: str = entry["endpoint"]
         method: str = entry["method"]
-        headers = _build_headers(entry.get("agent_token"))
 
         try:
+            headers = _build_headers(entry.get("agent_token"))
             kwargs: dict[str, Any] = {}
             if entry.get("body") is not None:
                 kwargs["json"] = entry["body"]
@@ -106,7 +106,7 @@ def register(mcp: FastMCP) -> None:
 
             resp = await client.request(method, endpoint, headers=headers, **kwargs)
             resp.raise_for_status()
-            result = resp.json()
+            result = resp.json() if resp.content else {"success": True}
 
             audit_log.log_result(
                 token=token,
@@ -116,7 +116,7 @@ def register(mcp: FastMCP) -> None:
                 success=True,
                 result=result,
             )
-            return result
+            return redact(result)
 
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, endpoint, resp.text)

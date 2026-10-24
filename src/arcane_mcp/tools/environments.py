@@ -8,7 +8,8 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..mode import redact, resolve_secret
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.get(url)
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -42,7 +43,7 @@ def register(mcp: FastMCP) -> None:
             return {
                 "classification": ToolClass.CREDENTIAL_SENSITIVE,
                 "warning": "This response may contain sensitive data (env vars, secrets, config). Handle with care.",
-                "data": result,
+                "data": redact(result),
             }
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
@@ -53,14 +54,17 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def create_environment(name: str, api_url: str, agent_token: str) -> Any:
-        """Register a new remote agent environment."""
+        """Register a new remote agent environment.
+
+        Pass agent_token as 'env:VAR_NAME' to read it from the MCP server's environment (required in cloud mode)."""
         client = require_client()
         url = "/api/environments"
-        payload = {"name": name, "apiUrl": api_url, "accessToken": agent_token}
         try:
+            access_token = resolve_secret(agent_token, "agent_token")
+            payload = {"name": name, "apiUrl": api_url, "accessToken": access_token}
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -70,26 +74,41 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def update_environment(env_id: str, name: str | None = None, api_url: str | None = None, agent_token: str | None = None) -> Any:
-        """Update environment settings (name, API URL, or access token)."""
-        client = require_client()
-        url = f"/api/environments/{env_id}"
+        """Update environment settings (name, API URL, or access token). Requires confirmation token to execute,
+        because repointing an environment redirects every later operation on it.
+        Pass agent_token as 'env:VAR_NAME' (required in cloud mode)."""
         payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
         if api_url is not None:
             payload["apiUrl"] = api_url
-        if agent_token is not None:
-            payload["accessToken"] = agent_token
         try:
-            resp = await client.put(url, json=payload)
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPStatusError as e:
-            logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
-            return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
-        except Exception as e:
-            logger.exception("Unexpected error on %s", url)
+            if agent_token is not None:
+                payload["accessToken"] = resolve_secret(agent_token, "agent_token")
+        except ValueError as e:
             return {"error": str(e)}
+        if not payload:
+            return {"warning": "No update payload provided. Pass name, api_url or agent_token."}
+        token = get_token_store().create(
+            action="update_environment",
+            target=env_id,
+            endpoint=f"/api/environments/{env_id}",
+            method="PUT",
+            body=payload,
+            params=None,
+            classification=ToolClass.DESTRUCTIVE_WRITE,
+            env_id=env_id,
+            agent_token=None,
+        )
+        return {
+            "warning": "Environment update. Call confirm_operation(token=...) to proceed.",
+            "confirmation_token": token,
+            "operation_hash": get_token_store().operation_hash(token),
+            "target": env_id,
+            "action": "update_environment",
+            "changes": {k: ("[REDACTED]" if k == "accessToken" else v) for k, v in payload.items()},
+            "classification": ToolClass.DESTRUCTIVE_WRITE,
+        }
 
     @mcp.tool()
     async def remove_environment(env_id: str) -> Any:
@@ -105,4 +124,4 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=None,
         )
-        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": compute_operation_hash("remove_environment", env_id, None, None), "target": env_id, "action": "remove_environment"}
+        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": get_token_store().operation_hash(token), "target": env_id, "action": "remove_environment"}

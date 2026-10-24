@@ -8,7 +8,7 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("remove_network", network_id, None, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
@@ -128,7 +128,8 @@ def register(mcp: FastMCP) -> None:
         if dry_run:
             return {
                 "dry_run": True,
-                "warning": "Dry-run. Set dry_run=False and confirm to execute.",
+                "warning": "Dry-run: nothing was queried or changed. Review candidates with the list_* tools, "
+                           "then set dry_run=False and confirm to execute.",
                 "action": "prune_networks",
                 "target": "all",
             }
@@ -141,7 +142,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("prune_networks", "all", None, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,

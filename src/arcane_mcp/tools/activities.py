@@ -8,7 +8,7 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": compute_operation_hash("clear_activity_history", env_id, None, None), "target": env_id, "action": "clear_activity_history"}
+        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": get_token_store().operation_hash(token), "target": env_id, "action": "clear_activity_history"}
 
     @mcp.tool()
     async def list_events(agent_token: str | None = None) -> Any:
@@ -126,4 +126,4 @@ def register(mcp: FastMCP) -> None:
             env_id=None,
             agent_token=agent_token,
         )
-        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": compute_operation_hash("delete_event", event_id, None, None), "target": event_id, "action": "delete_event"}
+        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": get_token_store().operation_hash(token), "target": event_id, "action": "delete_event"}

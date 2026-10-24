@@ -149,7 +149,24 @@ class TokenStore:
             "Token %s: %s %s (op_hash=%s class=%s)",
             token, action, target, operation_hash, classification,
         )
+        get_audit_log().log_proposed(
+            token=token,
+            action=action,
+            target=target,
+            env_id=env_id,
+            classification=classification,
+            operation_hash=operation_hash,
+            resource_hash=resource_hash,
+        )
         return token
+
+    def operation_hash(self, token: str) -> str:
+        """Return the operation hash stored for *token*.
+
+        Tools return this to the agent instead of recomputing it, so the hash
+        the agent echoes back always matches what ``consume()`` checks.
+        """
+        return str(self._tokens[token]["operation_hash"])
 
     def consume(self, token: str, operation_hash: str | None = None) -> dict[str, Any] | None:
         """Retrieve and remove a token, optionally validating the operation hash.

@@ -8,7 +8,7 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,12 @@ def register(mcp: FastMCP) -> None:
         agent_token: str | None = None,
         dry_run: bool = True,
     ) -> Any:
-        """Prune system resources for the given environment. Select what to prune via flags (containers, images, volumes, networks, build_cache). Volumes default to False. Use dry_run=True (default) to preview what would be pruned without making changes."""
+        """Prune system resources for the given environment. Select what to prune via flags (containers, images, volumes, networks, build_cache). Volumes default to False. dry_run=True (default) makes no changes but does not list what would be pruned; check with list_* tools first."""
         if dry_run:
             return {
                 "dry_run": True,
-                "warning": "Dry-run. Set dry_run=False to proceed.",
+                "warning": "Dry-run: nothing was queried or changed. Review candidates with the list_* tools, "
+                           "then set dry_run=False and confirm to execute.",
                 "action": "prune_system",
                 "target": f"system:{env_id}",
             }
@@ -86,18 +87,7 @@ def register(mcp: FastMCP) -> None:
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
             "classification": ToolClass.DESTRUCTIVE_WRITE,
-            "operation_hash": compute_operation_hash(
-                "prune_system",
-                f"system:{env_id}",
-                {
-                    "containers": containers,
-                    "images": images,
-                    "volumes": volumes,
-                    "networks": networks,
-                    "buildCache": build_cache,
-                },
-                None,
-            ),
+            "operation_hash": get_token_store().operation_hash(token),
             "target": f"system:{env_id}",
             "action": "prune_system",
         }
@@ -152,7 +142,7 @@ def register(mcp: FastMCP) -> None:
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
             "classification": ToolClass.DESTRUCTIVE_WRITE,
-            "operation_hash": compute_operation_hash("trigger_upgrade", f"system:{env_id}", None, None),
+            "operation_hash": get_token_store().operation_hash(token),
             "target": f"system:{env_id}",
             "action": "trigger_upgrade",
         }
@@ -178,7 +168,7 @@ def register(mcp: FastMCP) -> None:
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
             "classification": ToolClass.DESTRUCTIVE_WRITE,
-            "operation_hash": compute_operation_hash("start_all_containers", f"system:{env_id}", None, None),
+            "operation_hash": get_token_store().operation_hash(token),
             "target": f"system:{env_id}",
             "action": "start_all_containers",
         }
@@ -204,7 +194,7 @@ def register(mcp: FastMCP) -> None:
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
             "classification": ToolClass.DESTRUCTIVE_WRITE,
-            "operation_hash": compute_operation_hash("start_stopped_containers", f"system:{env_id}", None, None),
+            "operation_hash": get_token_store().operation_hash(token),
             "target": f"system:{env_id}",
             "action": "start_stopped_containers",
         }
@@ -230,7 +220,7 @@ def register(mcp: FastMCP) -> None:
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
             "classification": ToolClass.DESTRUCTIVE_WRITE,
-            "operation_hash": compute_operation_hash("stop_all_containers", f"system:{env_id}", None, None),
+            "operation_hash": get_token_store().operation_hash(token),
             "target": f"system:{env_id}",
             "action": "stop_all_containers",
         }

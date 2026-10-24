@@ -8,7 +8,7 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("remove_image", image_id, {"force": str(force).lower()}, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
@@ -117,7 +117,8 @@ def register(mcp: FastMCP) -> None:
         if dry_run:
             return {
                 "dry_run": True,
-                "warning": "Dry-run. Set dry_run=False and confirm to execute.",
+                "warning": "Dry-run: nothing was queried or changed. Review candidates with the list_* tools, "
+                           "then set dry_run=False and confirm to execute.",
                 "action": "prune_images",
                 "target": "all",
             }
@@ -132,7 +133,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("prune_images", "all", None, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
@@ -160,20 +161,27 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def build_image(dockerfile_content: str, tag: str = "latest", env_id: str = "0", agent_token: str | None = None) -> Any:
-        """Build an image from Dockerfile content."""
-        client = require_client()
-        url = f"/api/environments/{env_id}/images/build"
-        body = {"dockerfile": dockerfile_content, "tag": tag}
-        try:
-            resp = await client.post(url, json=body, headers=_build_headers(agent_token))
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPStatusError as e:
-            logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
-            return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
-        except Exception as e:
-            logger.exception("Unexpected error on %s", url)
-            return {"error": str(e)}
+        """Build an image from Dockerfile content. Requires confirmation token to execute,
+        because a build runs arbitrary commands on the Docker host."""
+        token = get_token_store().create(
+            action="build_image",
+            target=tag,
+            endpoint=f"/api/environments/{env_id}/images/build",
+            method="POST",
+            body={"dockerfile": dockerfile_content, "tag": tag},
+            params=None,
+            classification=ToolClass.DESTRUCTIVE_WRITE,
+            env_id=env_id,
+            agent_token=agent_token,
+        )
+        return {
+            "warning": "Image build runs the Dockerfile's commands on the host. Review it, then call confirm_operation(token=...).",
+            "confirmation_token": token,
+            "operation_hash": get_token_store().operation_hash(token),
+            "target": tag,
+            "action": "build_image",
+            "classification": ToolClass.DESTRUCTIVE_WRITE,
+        }
 
     @mcp.tool()
     async def search_images(query: str, env_id: str = "0", agent_token: str | None = None) -> Any:

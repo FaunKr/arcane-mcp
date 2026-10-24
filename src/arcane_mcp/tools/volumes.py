@@ -8,7 +8,8 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..mode import cloud_blocked, is_cloud
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("remove_volume", name, {"force": str(force).lower()}, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
@@ -100,7 +101,8 @@ def register(mcp: FastMCP) -> None:
         if dry_run:
             return {
                 "dry_run": True,
-                "warning": "Dry-run. Set dry_run=False and confirm to execute.",
+                "warning": "Dry-run: nothing was queried or changed. Review candidates with the list_* tools, "
+                           "then set dry_run=False and confirm to execute.",
                 "action": "prune_volumes",
                 "target": "all",
             }
@@ -113,7 +115,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("prune_volumes", "all", None, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
@@ -222,7 +224,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("restore_volume_backup", volume_name, None, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
@@ -247,7 +249,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("delete_volume_backup", backup_id, None, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
@@ -259,7 +261,9 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def download_volume_backup(backup_id: str, env_id: str = "0", agent_token: str | None = None) -> Any:
-        """Download a volume backup."""
+        """Download a volume backup. Disabled in cloud mode (raw contents may contain secrets)."""
+        if is_cloud():
+            return cloud_blocked("download_volume_backup")
         client = require_client()
         url = f"/api/environments/{env_id}/volumes/backups/{backup_id}/download"
         try:
@@ -300,7 +304,9 @@ def register(mcp: FastMCP) -> None:
         name: str, path: str, env_id: str = "0",
         agent_token: str | None = None,
     ) -> Any:
-        """Read the contents of a file inside a volume."""
+        """Read the contents of a file inside a volume. Disabled in cloud mode (raw contents may contain secrets)."""
+        if is_cloud():
+            return cloud_blocked("read_volume_file")
         client = require_client()
         url = f"/api/environments/{env_id}/volumes/{name}/browse/content"
         params = {"path": path}
@@ -345,20 +351,27 @@ def register(mcp: FastMCP) -> None:
         name: str, path: str, content: str, env_id: str = "0",
         agent_token: str | None = None,
     ) -> Any:
-        """Upload a file to a path inside a volume."""
-        client = require_client()
-        url = f"/api/environments/{env_id}/volumes/{name}/browse/upload"
-        body = {"path": path, "content": content}
-        try:
-            resp = await client.post(url, json=body, headers=_build_headers(agent_token))
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPStatusError as e:
-            logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
-            return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
-        except Exception as e:
-            logger.exception("Unexpected error on %s", url)
-            return {"error": str(e)}
+        """Upload a file to a path inside a volume. Requires confirmation token to execute,
+        because writing into a volume can change what a container runs (configs, scripts)."""
+        token = get_token_store().create(
+            action="upload_to_volume",
+            target=f"volume:{name}:{path}",
+            endpoint=f"/api/environments/{env_id}/volumes/{name}/browse/upload",
+            method="POST",
+            body={"path": path, "content": content},
+            classification=ToolClass.DESTRUCTIVE_WRITE,
+            env_id=env_id,
+            agent_token=agent_token,
+        )
+        return {
+            "warning": "Writes into a volume (overwrites existing files). Call confirm_operation(token=...) to proceed.",
+            "confirmation_token": token,
+            "operation_hash": get_token_store().operation_hash(token),
+            "target": f"volume:{name}:{path}",
+            "action": "upload_to_volume",
+            "bytes": len(content.encode()),
+            "classification": ToolClass.DESTRUCTIVE_WRITE,
+        }
 
     @mcp.tool()
     async def delete_volume_file(
@@ -376,7 +389,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("delete_volume_file", f"{name}:{path}", None, {"path": path})
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,

@@ -8,7 +8,8 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..mode import redact
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.get(url, params={"all": str(all).lower()}, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -44,7 +45,7 @@ def register(mcp: FastMCP) -> None:
             return {
                 "classification": ToolClass.CREDENTIAL_SENSITIVE,
                 "warning": "This response may contain sensitive data (env vars, secrets, config). Handle with care.",
-                "data": result,
+                "data": redact(result),
             }
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
@@ -118,7 +119,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("remove_container", container_id, None, {"force": str(force).lower()})
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
@@ -157,7 +158,9 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def exec_in_container(container_id: str, command: str, env_id: str = "0", agent_token: str | None = None) -> Any:
-        """Execute a command inside a running container. NOTE: The Arcane API does not expose a container exec endpoint. This tool will attempt to use SSH as a fallback if available, otherwise returns an error."""
+        """Execute a command inside a running container.
+
+        NOTE: The Arcane API may not expose an exec endpoint; if it returns 404 this tool returns an error (there is no fallback)."""
         client = require_client()
         url = f"/api/environments/{env_id}/containers/{container_id}/exec"
         payload = {"cmd": command.split()}
@@ -183,7 +186,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.get(url, params=params, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             if resp.status_code == 404:
                 return {"error": "Logs endpoint not available in Arcane API. Use SSH to the Docker host as a workaround.", "container_id": container_id}
@@ -225,7 +228,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("kill_container", container_id, None, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,

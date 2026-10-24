@@ -51,15 +51,11 @@ async def test_create_environment(mcp: Any, httpx_mock: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_environment(mcp: Any, httpx_mock: Any) -> None:
-    """update_environment sends partial update."""
-    httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0",
-        method="PUT",
-        json={"id": "0", "name": "renamed"},
-    )
+async def test_update_environment_needs_confirm(mcp: Any) -> None:
+    """update_environment returns a confirmation token instead of executing."""
     result = await call_tool(mcp, "update_environment", env_id="0", name="renamed")
-    assert result["name"] == "renamed"
+    assert "confirmation_token" in result
+    assert result["changes"] == {"name": "renamed"}
 
 
 @pytest.mark.asyncio

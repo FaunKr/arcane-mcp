@@ -8,7 +8,8 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..mode import redact, resolve_secret
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -32,14 +33,17 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def create_registry(name: str, url: str, username: str = "", password: str = "", env_id: str = "0", agent_token: str | None = None) -> Any:
-        """Create a new container registry."""
+        """Create a new container registry.
+
+        Pass password as 'env:VAR_NAME' to read it from the MCP server's environment (required in cloud mode)."""
         client = require_client()
         url_path = "/api/container-registries"
-        payload = {"name": name, "url": url, "username": username, "password": password}
         try:
+            secret = resolve_secret(password, "password")
+            payload = {"name": name, "url": url, "username": username, "password": secret}
             resp = await client.post(url_path, json=payload, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url_path, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -55,7 +59,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -65,7 +69,9 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def update_registry(registry_id: str, name: str | None = None, url: str | None = None, username: str | None = None, password: str | None = None, env_id: str = "0", agent_token: str | None = None) -> Any:
-        """Update a container registry."""
+        """Update a container registry.
+
+        Pass password as 'env:VAR_NAME' to read it from the MCP server's environment (required in cloud mode)."""
         client = require_client()
         url_path = f"/api/container-registries/{registry_id}"
         payload: dict[str, Any] = {}
@@ -75,14 +81,14 @@ def register(mcp: FastMCP) -> None:
             payload["url"] = url
         if username is not None:
             payload["username"] = username
-        if password is not None:
-            payload["password"] = password
-        if not payload:
+        if not payload and password is None:
             return {"warning": "No update payload provided."}
         try:
+            if password is not None:
+                payload["password"] = resolve_secret(password, "password")
             resp = await client.put(url_path, json=payload, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url_path, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -104,7 +110,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": compute_operation_hash("delete_registry", registry_id, None, None), "target": registry_id, "action": "delete_registry"}
+        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": get_token_store().operation_hash(token), "target": registry_id, "action": "delete_registry"}
 
     @mcp.tool()
     async def test_registry(registry_id: str, env_id: str = "0", agent_token: str | None = None) -> Any:

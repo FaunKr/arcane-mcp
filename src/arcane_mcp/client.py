@@ -7,6 +7,8 @@ import os
 import httpx
 from dotenv import load_dotenv
 
+from .mode import resolve_secret
+
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -39,8 +41,9 @@ def require_client() -> httpx.AsyncClient:
 
 
 def _build_headers(agent_token: str | None = None) -> dict[str, str]:
-    """Add X-Arcane-Agent-Token header if provided."""
+    """Add X-Arcane-Agent-Token header if provided (``env:NAME`` references are resolved)."""
     headers: dict[str, str] = {}
-    if agent_token:
-        headers["X-Arcane-Agent-Token"] = agent_token
+    token = resolve_secret(agent_token, "agent_token")
+    if token:
+        headers["X-Arcane-Agent-Token"] = token
     return headers

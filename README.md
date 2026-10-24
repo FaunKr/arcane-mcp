@@ -32,6 +32,25 @@ ARCANE_API_KEY=arc_your_api_key_here
 ARCANE_BASE_URL=http://localhost:3552
 ```
 
+### Local vs. cloud model mode
+
+| Variable | Values | Default |
+|---|---|---|
+| `ARCANE_MCP_MODE` | `local` (self-hosted model, e.g. via Ollama/vLLM) or `cloud` (hosted model, e.g. Claude) | `cloud` |
+| `ARCANE_MCP_MODULES` | Comma-separated tool modules to load, e.g. `containers,projects,images,volumes` (`operations` is always loaded) | all |
+
+`cloud` is the default so that forgetting the variable fails safe. In **cloud** mode, tool output leaves your machine, so:
+
+- Container env vars are returned as `KEY=[REDACTED]`; secret-looking keys (`password`, `token`, `apiKey`, …), secret-looking lines in compose/.env/log text, and `user:password@` URL credentials are redacted.
+- `read_volume_file` and `download_volume_backup` are disabled.
+- Secrets must be passed by reference: `password="env:GHCR_PASSWORD"`, `agent_token="env:ARCANE_AGENT_TOKEN"` — the server reads the value from its own environment. Literal secrets are rejected.
+
+Redaction is pattern-based and best-effort: a secret logged in an unusual format can still get through.
+
+In **local** mode output is passed through unchanged and literal secrets are accepted (`env:NAME` references still work).
+
+Use one server entry per client, e.g. `ARCANE_MCP_MODE=local` in your OpenCode config and no mode (cloud) in Claude Code.
+
 ### OpenCode
 
 Add to your `opencode.json`:
@@ -118,8 +137,10 @@ confirm_operation(token="a1b2c3d4e5f6")
 
 This prevents an agent from blasting through a safety gate in one call — it must stop, process the warning, and make a second call.
 
+Also gated: `upload_to_volume`, `build_image`, `update_environment`. Note the agent can confirm its own tokens — for a human in the loop, set your MCP client to ask before `confirm_operation`.
+
 ### 2. Dry-run mode (prune/cleanup tools)
-Prune operations (`prune_images`, `prune_volumes`, `prune_networks`, `prune_system`, `clear_activity_history`) default to `dry_run=True`, showing what would be affected without making changes:
+Prune operations (`prune_images`, `prune_volumes`, `prune_networks`, `prune_system`, `clear_activity_history`) default to `dry_run=True`, which makes no changes. It does **not** list what would be removed — check with the `list_*` tools first:
 
 ```
 prune_images()

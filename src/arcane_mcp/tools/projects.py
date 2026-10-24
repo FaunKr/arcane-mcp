@@ -9,7 +9,8 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..mode import redact
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -58,7 +59,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -81,7 +82,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("deploy_project", project_name, {"compose": compose_content, "name": project_name}, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "classification": ToolClass.DESTRUCTIVE_WRITE,
             "risk_level": "high",
@@ -129,7 +130,7 @@ def register(mcp: FastMCP) -> None:
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
             "classification": ToolClass.DESTRUCTIVE_WRITE,
-            "operation_hash": compute_operation_hash("remove_project", project_id, None, None),
+            "operation_hash": get_token_store().operation_hash(token),
             "target": project_id,
             "action": "remove_project",
         }
@@ -162,7 +163,7 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        op_hash = compute_operation_hash("update_project", project_id, payload, None)
+        op_hash = get_token_store().operation_hash(token)
         return {
             "classification": ToolClass.DESTRUCTIVE_WRITE,
             "risk_level": "high",
@@ -210,7 +211,7 @@ def register(mcp: FastMCP) -> None:
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
             "classification": ToolClass.DESTRUCTIVE_WRITE,
-            "operation_hash": compute_operation_hash("project_down", project_id, None, None),
+            "operation_hash": get_token_store().operation_hash(token),
             "target": project_id,
             "action": "project_down",
         }
@@ -233,7 +234,7 @@ def register(mcp: FastMCP) -> None:
             "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
             "confirmation_token": token,
             "classification": ToolClass.DESTRUCTIVE_WRITE,
-            "operation_hash": compute_operation_hash("restart_project", project_id, None, None),
+            "operation_hash": get_token_store().operation_hash(token),
             "target": project_id,
             "action": "restart_project",
         }
@@ -314,7 +315,7 @@ def register(mcp: FastMCP) -> None:
             return {
                 "classification": ToolClass.CREDENTIAL_SENSITIVE,
                 "warning": "This response may contain sensitive data (env vars, secrets, config). Handle with care.",
-                "data": result,
+                "data": redact(result),
             }
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
@@ -335,7 +336,7 @@ def register(mcp: FastMCP) -> None:
             return {
                 "classification": ToolClass.CREDENTIAL_SENSITIVE,
                 "warning": "This response may contain sensitive data (env vars, secrets, config). Handle with care.",
-                "data": result,
+                "data": redact(result),
             }
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
@@ -368,7 +369,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}

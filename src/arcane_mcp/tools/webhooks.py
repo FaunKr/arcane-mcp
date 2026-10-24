@@ -8,7 +8,8 @@ import httpx
 from fastmcp import FastMCP
 
 from ..client import _build_headers, require_client
-from ..safety import ToolClass, compute_operation_hash, get_token_store
+from ..mode import redact
+from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -58,7 +59,7 @@ def register(mcp: FastMCP) -> None:
         try:
             resp = await client.post(api_url, json=body, headers=_build_headers(agent_token))
             resp.raise_for_status()
-            return resp.json()
+            return redact(resp.json())
         except httpx.HTTPStatusError as e:
             logger.warning("HTTP %s on %s: %s", resp.status_code, api_url, resp.text)
             return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
@@ -102,4 +103,4 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": compute_operation_hash("delete_webhook", webhook_id, None, None), "target": webhook_id, "action": "delete_webhook"}
+        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": get_token_store().operation_hash(token), "target": webhook_id, "action": "delete_webhook"}
