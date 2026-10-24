@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import call_tool
+from tests.conftest import call_tool, propose_and_confirm
 
 
 @pytest.mark.asyncio
@@ -47,7 +47,7 @@ async def test_remove_image_confirmed(mcp: Any, httpx_mock: Any) -> None:
         method="DELETE",
         json={"message": "removed"},
     )
-    result = await call_tool(mcp, "remove_image", image_id="img1", confirm=True)
+    result = await propose_and_confirm(mcp, "remove_image", image_id="img1")
     assert result == {"message": "removed"}
 
 

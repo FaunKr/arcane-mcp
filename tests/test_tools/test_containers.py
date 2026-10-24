@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import call_tool
+from tests.conftest import call_tool, propose_and_confirm
 
 # ── list_containers ───────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ async def test_inspect_container(mcp: Any, httpx_mock: Any) -> None:
         json={"id": "c1", "name": "web", "config": {}},
     )
     result = await call_tool(mcp, "inspect_container", container_id="c1")
-    assert result["id"] == "c1"
+    assert result["data"]["id"] == "c1"
 
 
 # ── start / stop / restart ────────────────────────────────────────────
@@ -102,21 +102,22 @@ async def test_restart_container(mcp: Any, httpx_mock: Any) -> None:
 
 @pytest.mark.asyncio
 async def test_remove_container_needs_confirm(mcp: Any, httpx_mock: Any) -> None:
-    """remove_container returns warning when confirm=False."""
+    """remove_container returns a confirmation token instead of executing."""
     result = await call_tool(mcp, "remove_container", container_id="c1")
     assert "warning" in result
-    assert result["container_id"] == "c1"
+    assert "confirmation_token" in result
+    assert result["target"] == "c1"
 
 
 @pytest.mark.asyncio
 async def test_remove_container_confirmed(mcp: Any, httpx_mock: Any) -> None:
-    """remove_container executes when confirm=True."""
+    """remove_container executes once confirmed."""
     httpx_mock.add_response(
         url="http://localhost:3552/api/environments/0/containers/c1?force=false",
         method="DELETE",
         json={"message": "removed"},
     )
-    result = await call_tool(mcp, "remove_container", container_id="c1", confirm=True)
+    result = await propose_and_confirm(mcp, "remove_container", container_id="c1")
     assert result == {"message": "removed"}
 
 

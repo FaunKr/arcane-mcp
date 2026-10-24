@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import call_tool
+from tests.conftest import call_tool, propose_and_confirm
 
 
 @pytest.mark.asyncio
@@ -40,7 +40,7 @@ async def test_deploy_project(mcp: Any, httpx_mock: Any) -> None:
         method="POST",
         json={"id": "p1", "name": "myapp"},
     )
-    result = await call_tool(mcp, "deploy_project", compose_content="version: '3'", project_name="myapp")
+    result = await propose_and_confirm(mcp, "deploy_project", compose_content="version: '3'", project_name="myapp")
     assert result["id"] == "p1"
 
 
@@ -71,7 +71,7 @@ async def test_remove_project_confirmed(mcp: Any, httpx_mock: Any) -> None:
         method="DELETE",
         json={"message": "removed"},
     )
-    result = await call_tool(mcp, "remove_project", project_id="p1", confirm=True)
+    result = await propose_and_confirm(mcp, "remove_project", project_id="p1")
     assert result == {"message": "removed"}
 
 
@@ -83,7 +83,7 @@ async def test_update_project(mcp: Any, httpx_mock: Any) -> None:
         method="PUT",
         json={"id": "p1", "name": "renamed"},
     )
-    result = await call_tool(mcp, "update_project", project_id="p1", project_name="renamed")
+    result = await propose_and_confirm(mcp, "update_project", project_id="p1", project_name="renamed")
     assert result["name"] == "renamed"
 
 

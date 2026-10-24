@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import call_tool
+from tests.conftest import call_tool, propose_and_confirm
 
 
 @pytest.mark.asyncio
@@ -29,7 +29,7 @@ async def test_get_environment(mcp: Any, httpx_mock: Any) -> None:
         json={"id": "0", "name": "local"},
     )
     result = await call_tool(mcp, "get_environment", env_id="0")
-    assert result["id"] == "0"
+    assert result["data"]["id"] == "0"
 
 
 @pytest.mark.asyncio
@@ -73,5 +73,5 @@ async def test_remove_environment_confirmed(mcp: Any, httpx_mock: Any) -> None:
         method="DELETE",
         json={"message": "removed"},
     )
-    result = await call_tool(mcp, "remove_environment", env_id="0", confirm=True)
+    result = await propose_and_confirm(mcp, "remove_environment", env_id="0")
     assert result == {"message": "removed"}

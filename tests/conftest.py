@@ -60,3 +60,13 @@ async def call_tool(mcp: FastMCP, tool_name: str, **kwargs: Any) -> Any:
     if result.content and hasattr(result.content[0], "text"):
         return json.loads(result.content[0].text)
     return result.content
+
+
+async def propose_and_confirm(mcp: FastMCP, tool_name: str, **kwargs: Any) -> Any:
+    """Run a gated tool's two-step flow: propose, then confirm with the returned token and hash."""
+    proposal = await call_tool(mcp, tool_name, **kwargs)
+    assert "confirmation_token" in proposal, proposal
+    return await call_tool(
+        mcp, "confirm_operation",
+        token=proposal["confirmation_token"], operation_hash=proposal["operation_hash"],
+    )

@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import call_tool
+from tests.conftest import call_tool, propose_and_confirm
 
 
 @pytest.mark.asyncio
@@ -59,7 +59,7 @@ async def test_remove_network_confirmed(mcp: Any, httpx_mock: Any) -> None:
         method="DELETE",
         json={"message": "removed"},
     )
-    result = await call_tool(mcp, "remove_network", network_id="net1", confirm=True)
+    result = await propose_and_confirm(mcp, "remove_network", network_id="net1")
     assert result == {"message": "removed"}
 
 
