@@ -74,8 +74,8 @@ Or set environment variables globally and omit them from the config.
 
 ## Tools (125 total)
 
-### Containers (18)
-list_containers, inspect_container, create_container, start_container, stop_container, restart_container, kill_container, pause_container, unpause_container, remove_container, redeploy_container, commit_container, update_container, set_container_auto_update, exec_in_container, get_container_logs, get_container_stats, get_container_counts
+### Containers (19)
+list_containers, inspect_container, create_container, start_container, stop_container, restart_container, kill_container, pause_container, unpause_container, remove_container, redeploy_container, commit_container, update_container, set_container_auto_update, exec_in_container, run_command, get_container_logs, get_container_stats, get_container_counts
 
 ### Images (19)
 list_images, inspect_image, pull_image, remove_image, tag_image, prune_images, get_image_counts, build_image, search_images, upload_image, get_image_history, get_image_export, get_image_attestations, scan_image_vulnerabilities, get_image_vulnerabilities, get_vulnerability_summary, check_image_update, check_all_image_updates, get_image_update_summary
