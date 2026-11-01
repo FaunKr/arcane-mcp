@@ -93,7 +93,7 @@ src/arcane_mcp/
 └── tools/
     ├── __init__.py
     ├── activities.py      # 7 tools: list_activities, get_activity, cancel_activity, clear_activity_history, list_events, get_environment_events, delete_event
-    ├── containers.py      # 18 tools: list, inspect, create, start, stop, restart, kill, pause, unpause, remove, redeploy, commit, update, exec, logs, stats, set_auto_update, counts
+    ├── containers.py      # 19 tools: list, inspect, create, start, stop, restart, kill, pause, unpause, remove, redeploy, commit, update, exec, run_command, logs, stats, set_auto_update, counts
     ├── environments.py    # 5 tools: list, get, create, update, remove
     ├── images.py          # 19 tools: list, inspect, pull, remove, tag, prune, counts, build, search, upload, history, export, attestations, scan_vulns, get_vulns, vuln_summary, check_update, check_all_updates, update_summary
     ├── networks.py        # 9 tools: list, create, inspect, remove, connect, disconnect, prune, counts, topology
@@ -163,7 +163,8 @@ async def remove_container(container_id: str, force: bool = False,
 
 - `.env` must stay gitignored (already is)
 - Auth via `X-Api-Key` — never expose in URLs, return values, or logs
-- `exec_in_container` is high-privilege — returns API-gap notice (Arcane API doesn't expose exec). Use SSH workaround.
+- `exec_in_container` is high-privilege — returns API-gap notice (Arcane API doesn't expose exec).
+- `run_command` is the working substitute: it creates a throwaway container (optionally inheriting image/binds/network from an existing one), runs `/bin/sh -c`, returns exit code + output, then force-removes it. Requires `confirm=True`.
 - `ARCANE_API_KEY` is a secret; treat it like a password
 
 ---
