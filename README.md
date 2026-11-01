@@ -41,11 +41,11 @@ ARCANE_BASE_URL=http://localhost:3552
 
 `cloud` is the default so that forgetting the variable fails safe. In **cloud** mode, tool output leaves your machine, so:
 
-- Container env vars are returned as `KEY=[REDACTED]`; secret-looking keys (`password`, `token`, `apiKey`, …), secret-looking lines in compose/.env/log text, and `user:password@` URL credentials are redacted.
+- Container env vars and Compose project `.env` documents are returned as `KEY=[REDACTED]` — **every** value, not just secret-looking ones, because credentials hide under innocuous names (`HETZNER_API`, `SMTP_URL`, …). Secret-looking keys (`password`, `token`, `apiKey`, …), secret-looking lines in compose/log text, and `user:password@` URL credentials are also redacted.
 - `read_volume_file` and `download_volume_backup` are disabled.
 - Secrets must be passed by reference: `password="env:GHCR_PASSWORD"`, `agent_token="env:ARCANE_AGENT_TOKEN"` — the server reads the value from its own environment. Literal secrets are rejected.
 
-Redaction is pattern-based and best-effort: a secret logged in an unusual format can still get through.
+Redaction is pattern-based and best-effort: a secret logged in an unusual format can still get through. Dotenv documents are the exception — they are recognised by shape (not by field name) and redacted wholesale.
 
 In **local** mode output is passed through unchanged and literal secrets are accepted (`env:NAME` references still work).
 

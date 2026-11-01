@@ -24,6 +24,13 @@ _SAFE_KEYS = {"confirmation_token", "operation_hash"}
 # Container env lists ("KEY=VALUE" strings) — every value is redacted, not just secret-looking ones,
 # because connection strings and the like carry credentials under innocuous names.
 _ENV_LIST_KEYS = {"env", "environment"}
+# Fields holding a whole dotenv document (a Compose project's `.env`). Same reasoning as
+# _ENV_LIST_KEYS: an agent platform's DNS token lives under `HETZNER_API` and never matches a
+# secret-name pattern, so *every* value is redacted here too.
+_ENV_DOCUMENT_KEYS = {"envcontent", "env_content", "envfile", "env_file", "envfilecontent", "dotenv"}
+
+# One line of a dotenv document: "KEY=value", optionally prefixed with "export " and indented.
+_ENV_DOCUMENT_LINE_RE = re.compile(r"^(?P<prefix>[ \t]*(?:export[ \t]+)?)(?P<key>[A-Za-z_][A-Za-z0-9_.-]*)=(?P<value>.*)$")
 
 # "scheme://user:password@host" → keep user, drop password.
 _URL_CREDS_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://[^:/\s@]+:)[^@\s/]+@", re.IGNORECASE)
@@ -44,8 +51,38 @@ def is_cloud() -> bool:
 
 
 def redact_text(text: str) -> str:
+    if _looks_like_env_document(text):
+        return redact_env_document(text)
     text = _URL_CREDS_RE.sub(rf"\1{REDACTED}@", text)
     return _SECRET_LINE_RE.sub(rf"\1{REDACTED}", text)
+
+
+def _looks_like_env_document(text: str) -> bool:
+    """True when most non-comment lines are "KEY=value" — i.e. this is a `.env` blob.
+
+    Name-based matching cannot cover this: a `.env` holds credentials under names no
+    secret-pattern recognises. Shape is the reliable signal, so a dotenv document is
+    caught even when the API returns it under a field name we do not know about.
+    """
+    lines = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    if not lines:
+        return False
+    matching = sum(1 for line in lines if _ENV_DOCUMENT_LINE_RE.match(line))
+    return matching * 2 >= len(lines)
+
+
+def redact_env_document(text: str) -> str:
+    """Redact every value in a dotenv document, keeping keys, comments and line order."""
+    out: list[str] = []
+    for line in text.splitlines(keepends=True):
+        body = line.rstrip("\r\n")
+        stripped = body.lstrip()
+        match = _ENV_DOCUMENT_LINE_RE.match(body)
+        if not stripped or stripped.startswith("#") or match is None or not match.group("value").strip():
+            out.append(line)
+            continue
+        out.append(f"{match.group('prefix')}{match.group('key')}={REDACTED}{line[len(body) :]}")
+    return "".join(out)
 
 
 def _redact_env_entry(entry: Any) -> Any:
@@ -64,6 +101,8 @@ def redact(value: Any) -> Any:
             key = str(k)
             if key in _SAFE_KEYS:
                 out[k] = v
+            elif key.lower() in _ENV_DOCUMENT_KEYS and isinstance(v, str):
+                out[k] = redact_env_document(v)
             elif _SECRET_KEY_RE.search(key) and isinstance(v, (str, int, float)) and v != "":
                 out[k] = REDACTED
             elif key.lower() in _ENV_LIST_KEYS and isinstance(v, list):
