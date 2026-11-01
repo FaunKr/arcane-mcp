@@ -56,6 +56,23 @@ def test_compose_text_redacted(cloud: None) -> None:
     assert "secrets:\n" in out
 
 
+def test_env_document_values_redacted(cloud: None) -> None:
+    """.env content: every value goes, keys and comments stay."""
+    data = {"envContent": 'HETZNER_API=tg_abc123\nTZ=Europe/Berlin\nexport QUOTED="a=b"\n\n# keep me\n'}
+    assert redact(data)["envContent"] == (
+        "HETZNER_API=[REDACTED]\nTZ=[REDACTED]\nexport QUOTED=[REDACTED]\n\n# keep me\n"
+    )
+
+
+def test_env_document_detected_by_shape_not_key_name(cloud: None) -> None:
+    """A dotenv-shaped string is redacted even under an innocuous field name."""
+    assert redact({"notes": "FOO=bar\nBAZ=qux"}) == {"notes": "FOO=[REDACTED]\nBAZ=[REDACTED]"}
+
+
+def test_plain_text_untouched(cloud: None) -> None:
+    assert redact({"msg": "hello world", "path": "/srv/site"}) == {"msg": "hello world", "path": "/srv/site"}
+
+
 def test_resolve_secret(monkeypatch: pytest.MonkeyPatch, cloud: None) -> None:
     monkeypatch.setenv("REG_PW", "s3cret")
     assert resolve_secret("env:REG_PW", "password") == "s3cret"
@@ -81,6 +98,30 @@ async def test_inspect_container_redacts_env(mcp: Any, httpx_mock: Any, cloud: N
     )
     result = await call_tool(mcp, "inspect_container", container_id="c1")
     assert result["data"]["config"]["env"] == [f"SECRET_KEY={REDACTED}"]
+
+
+@pytest.mark.asyncio
+async def test_get_project_compose_redacts_env_document(mcp: Any, httpx_mock: Any, cloud: None) -> None:
+    """Regression: .env content came back verbatim (HETZNER_API leaked) despite cloud redaction."""
+    httpx_mock.add_response(
+        url="http://localhost:3552/api/environments/0/projects/p1/compose",
+        method="GET",
+        json={
+            "success": True,
+            "data": {
+                "name": "caddy",
+                "composeContent": "services:\n  caddy:\n    image: caddy:2.11\n",
+                "envContent": "HETZNER_API=tg_sealedsecret\nTZ=Europe/Berlin\n",
+            },
+        },
+    )
+    result = await call_tool(mcp, "get_project_compose", project_id="p1")
+    dumped = json.dumps(result)
+    assert "tg_sealedsecret" not in dumped
+    assert "Europe/Berlin" not in dumped
+    # Structure survives: keys and the compose body are still readable.
+    assert "HETZNER_API" in dumped and "TZ" in dumped
+    assert "caddy:2.11" in dumped
 
 
 @pytest.mark.asyncio
