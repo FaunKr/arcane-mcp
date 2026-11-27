@@ -1,6 +1,7 @@
 """Tests for network tools."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -12,7 +13,7 @@ from tests.conftest import call_tool, propose_and_confirm
 async def test_list_networks(mcp: Any, httpx_mock: Any) -> None:
     """list_networks returns networks list."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/networks",
+        url="http://localhost:3552/api/agents/0/networks",
         method="GET",
         json=[{"id": "net1", "name": "bridge"}],
     )
@@ -24,7 +25,7 @@ async def test_list_networks(mcp: Any, httpx_mock: Any) -> None:
 async def test_create_network(mcp: Any, httpx_mock: Any) -> None:
     """create_network posts with name and driver."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/networks",
+        url="http://localhost:3552/api/agents/0/networks",
         method="POST",
         json={"id": "net2", "name": "my-net"},
     )
@@ -36,7 +37,7 @@ async def test_create_network(mcp: Any, httpx_mock: Any) -> None:
 async def test_inspect_network(mcp: Any, httpx_mock: Any) -> None:
     """inspect_network returns network details."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/networks/net1",
+        url="http://localhost:3552/api/agents/0/networks/net1",
         method="GET",
         json={"id": "net1", "name": "bridge"},
     )
@@ -55,7 +56,7 @@ async def test_remove_network_needs_confirm(mcp: Any, httpx_mock: Any) -> None:
 async def test_remove_network_confirmed(mcp: Any, httpx_mock: Any) -> None:
     """remove_network executes when confirmed."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/networks/net1",
+        url="http://localhost:3552/api/agents/0/networks/net1",
         method="DELETE",
         json={"message": "removed"},
     )
@@ -67,21 +68,27 @@ async def test_remove_network_confirmed(mcp: Any, httpx_mock: Any) -> None:
 async def test_connect_container(mcp: Any, httpx_mock: Any) -> None:
     """connect_container_to_network connects a container."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/networks/net1/connect",
+        url="http://localhost:3552/api/agents/0/networks/net1?action=connect",
         method="POST",
         json={"message": "connected"},
     )
     result = await call_tool(mcp, "connect_container_to_network", network_id="net1", container_id="c1")
     assert result == {"message": "connected"}
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert body == {"containerId": "c1"}
+    assert httpx_mock.get_requests()[0].url.params["action"] == "connect"
 
 
 @pytest.mark.asyncio
 async def test_disconnect_container(mcp: Any, httpx_mock: Any) -> None:
     """disconnect_container_from_network disconnects a container."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/networks/net1/disconnect",
+        url="http://localhost:3552/api/agents/0/networks/net1?action=disconnect",
         method="POST",
         json={"message": "disconnected"},
     )
     result = await call_tool(mcp, "disconnect_container_from_network", network_id="net1", container_id="c1")
     assert result == {"message": "disconnected"}
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert body == {"containerId": "c1"}
+    assert httpx_mock.get_requests()[0].url.params["action"] == "disconnect"

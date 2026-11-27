@@ -65,7 +65,7 @@ def register(mcp: FastMCP) -> None:
         """Tool docstring becomes MCP tool description."""
         client = require_client()
         try:
-            resp = await client.get(f"/api/environments/{env_id}/...", headers=_build_headers(agent_token))
+            resp = await client.get(api_path(env_id, "containers"), headers=_build_headers(agent_token))
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as e:
@@ -115,7 +115,7 @@ src/arcane_mcp/
 - Auth via `X-Api-Key` header (NOT Bearer token), added at client construction
 - Remote agents send `X-Arcane-Agent-Token` header via `_build_headers(agent_token)`
 - Default Arcane port: 3552 (`http://localhost:3552`)
-- API is multi-tenant: `/api/environments/{env_id}/{resource}`
+- API is multi-tenant: `/api/agents/{id}/{resource}` (Arcane v3; it was `/api/environments/{id}` in v2)
 - Environment "0" = default local. Remote agents use UUIDs.
 - Interactive API docs live **in the Arcane UI** at Settings → API Keys → API Reference
 - Arcane CLI: `arcane-cli config set` for reference
@@ -124,7 +124,7 @@ src/arcane_mcp/
 
 ## Arcane API Key Endpoints
 
-Base: `/api/environments/{env_id}`
+Base: `/api/agents/{id}` (v3)
 
 | Resource | Endpoints |
 |----------|-----------|

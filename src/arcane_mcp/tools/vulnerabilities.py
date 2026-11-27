@@ -1,4 +1,10 @@
-"""Vulnerability scanning tools."""
+"""Vulnerability scanning tools.
+
+v3 renames inside ``/api/agents/{id}/vulnerabilities``:
+``summary`` -> ``summary`` (unchanged), ``all`` -> ``all`` (unchanged),
+``ignore`` -> ``ignored`` (POST), ``ignored`` -> ``ignored`` (GET),
+``ignore/{id}`` -> ``ignored/{id}`` (DELETE), ``scanner-status`` -> ``scanner``.
+"""
 from __future__ import annotations
 
 import logging
@@ -7,7 +13,7 @@ from typing import Any
 import httpx
 from fastmcp import FastMCP
 
-from ..client import _build_headers, require_client
+from ..client import _build_headers, api_path, require_client
 from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
@@ -18,7 +24,7 @@ def register(mcp: FastMCP) -> None:
     async def get_vulnerability_summary_all(env_id: str = "0", agent_token: str | None = None) -> Any:
         """Get vulnerability summary across all scanned images."""
         client = require_client()
-        url = f"/api/environments/{env_id}/vulnerabilities/summary"
+        url = api_path(env_id, "vulnerabilities", "summary")
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
@@ -34,7 +40,7 @@ def register(mcp: FastMCP) -> None:
     async def list_all_vulnerabilities(env_id: str = "0", agent_token: str | None = None) -> Any:
         """List all vulnerabilities across the environment."""
         client = require_client()
-        url = f"/api/environments/{env_id}/vulnerabilities/all"
+        url = api_path(env_id, "vulnerabilities", "all")
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
@@ -48,26 +54,26 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def ignore_vulnerability(urn: str, env_id: str = "0", agent_token: str | None = None) -> Any:
-        """Ignore a specific vulnerability by URN."""
-        client = require_client()
-        url = f"/api/environments/{env_id}/vulnerabilities/ignore"
-        payload = {"urn": urn}
-        try:
-            resp = await client.post(url, json=payload, headers=_build_headers(agent_token))
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPStatusError as e:
-            logger.warning("HTTP %s on %s: %s", resp.status_code, url, resp.text)
-            return {"error": str(e), "status_code": resp.status_code, "detail": resp.text}
-        except Exception as e:
-            logger.exception("Unexpected error on %s", url)
-            return {"error": str(e)}
+        """Ignore a specific vulnerability by URN.
+
+        Not available in Arcane v3: the API no longer knows vulnerability URNs.
+        POST /api/agents/{id}/vulnerabilities/ignored now takes a structured
+        record (imageId, vulnerabilityId, pkgName, reason), so a single URN
+        cannot be mapped onto it."""
+        return {
+            "error": "ignore_vulnerability is not available in Arcane v3: the API no "
+            "longer accepts a vulnerability URN. Ignoring now requires a structured "
+            "record (imageId, vulnerabilityId, pkgName, reason) posted to "
+            f"{api_path(env_id, 'vulnerabilities', 'ignored')}.",
+            "action": "ignore_vulnerability",
+            "target": urn,
+        }
 
     @mcp.tool()
     async def list_ignored_vulnerabilities(env_id: str = "0", agent_token: str | None = None) -> Any:
         """List all ignored vulnerabilities."""
         client = require_client()
-        url = f"/api/environments/{env_id}/vulnerabilities/ignored"
+        url = api_path(env_id, "vulnerabilities", "ignored")
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
@@ -85,7 +91,7 @@ def register(mcp: FastMCP) -> None:
         token = get_token_store().create(
             action="unignore_vulnerability",
             target=ignore_id,
-            endpoint=f"/api/environments/{env_id}/vulnerabilities/ignore/{ignore_id}",
+            endpoint=api_path(env_id, "vulnerabilities", "ignored", ignore_id),
             method="DELETE",
             body=None,
             params=None,
@@ -93,13 +99,20 @@ def register(mcp: FastMCP) -> None:
             env_id=env_id,
             agent_token=agent_token,
         )
-        return {"warning": "Destructive operation. Call confirm_operation(token=...) to proceed.", "confirmation_token": token, "classification": ToolClass.DESTRUCTIVE_WRITE, "operation_hash": get_token_store().operation_hash(token), "target": ignore_id, "action": "unignore_vulnerability"}
+        return {
+            "warning": "Destructive operation. Call confirm_operation(token=...) to proceed.",
+            "confirmation_token": token,
+            "classification": ToolClass.DESTRUCTIVE_WRITE,
+            "operation_hash": get_token_store().operation_hash(token),
+            "target": ignore_id,
+            "action": "unignore_vulnerability",
+        }
 
     @mcp.tool()
     async def get_scanner_status(env_id: str = "0", agent_token: str | None = None) -> Any:
         """Get vulnerability scanner (Trivy) status."""
         client = require_client()
-        url = f"/api/environments/{env_id}/vulnerabilities/scanner-status"
+        url = api_path(env_id, "vulnerabilities", "scanner")
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()

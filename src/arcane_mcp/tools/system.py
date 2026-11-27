@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from fastmcp import FastMCP
 
-from ..client import _build_headers, require_client
+from ..client import _build_headers, api_path, require_client
 from ..safety import ToolClass, get_token_store
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ def register(mcp: FastMCP) -> None:
     async def get_docker_info(env_id: str = "0", agent_token: str | None = None) -> Any:
         """Get Docker system information for the given environment."""
         client = require_client()
-        url = f"/api/environments/{env_id}/system/docker/info"
+        url = api_path(env_id, "system", "docker", "info")
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
@@ -34,7 +34,7 @@ def register(mcp: FastMCP) -> None:
     async def get_docker_version(env_id: str = "0", agent_token: str | None = None) -> Any:
         """Get Docker version for the given environment."""
         client = require_client()
-        url = f"/api/environments/{env_id}/version"
+        url = api_path(env_id, "version")
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
@@ -57,7 +57,12 @@ def register(mcp: FastMCP) -> None:
         agent_token: str | None = None,
         dry_run: bool = True,
     ) -> Any:
-        """Prune system resources for the given environment. Select what to prune via flags (containers, images, volumes, networks, build_cache). Volumes default to False. dry_run=True (default) makes no changes but does not list what would be pruned; check with list_* tools first."""
+        """Prune system resources for the given environment.
+
+        Select what to prune via flags (containers, images, volumes, networks,
+        build_cache). Volumes default to False. dry_run=True (default) makes no
+        changes but does not list what would be pruned; check with list_* tools first.
+        """
         if dry_run:
             return {
                 "dry_run": True,
@@ -66,18 +71,23 @@ def register(mcp: FastMCP) -> None:
                 "action": "prune_system",
                 "target": f"system:{env_id}",
             }
+        prune_options: dict[str, Any] = {}
+        if containers:
+            prune_options["containers"] = {"mode": "stopped"}
+        if images:
+            prune_options["images"] = {"mode": "all"}
+        if volumes:
+            prune_options["volumes"] = {"mode": "all"}
+        if networks:
+            prune_options["networks"] = {"mode": "unused"}
+        if build_cache:
+            prune_options["buildCache"] = {"mode": "unused"}
         token = get_token_store().create(
             action="prune_system",
             target=f"system:{env_id}",
-            endpoint=f"/api/environments/{env_id}/system/prune",
+            endpoint=api_path(env_id, "system", "prune"),
             method="POST",
-            body={
-                "containers": containers,
-                "images": images,
-                "volumes": volumes,
-                "networks": networks,
-                "buildCache": build_cache,
-            },
+            body=prune_options,
             params=None,
             classification=ToolClass.DESTRUCTIVE_WRITE,
             env_id=env_id,
@@ -112,7 +122,7 @@ def register(mcp: FastMCP) -> None:
     async def check_system_upgrade(env_id: str = "0", agent_token: str | None = None) -> Any:
         """Check if a system upgrade is available for the given environment."""
         client = require_client()
-        url = f"/api/environments/{env_id}/system/upgrade/check"
+        url = api_path(env_id, "system", "upgrade", "check")
         try:
             resp = await client.get(url, headers=_build_headers(agent_token))
             resp.raise_for_status()
@@ -130,7 +140,7 @@ def register(mcp: FastMCP) -> None:
         token = get_token_store().create(
             action="trigger_upgrade",
             target=f"system:{env_id}",
-            endpoint=f"/api/environments/{env_id}/system/upgrade",
+            endpoint=api_path(env_id, "system", "upgrade"),
             method="POST",
             body=None,
             params=None,
@@ -156,10 +166,10 @@ def register(mcp: FastMCP) -> None:
         token = get_token_store().create(
             action="start_all_containers",
             target=f"system:{env_id}",
-            endpoint=f"/api/environments/{env_id}/system/containers/start-all",
+            endpoint=api_path(env_id, "system", "containers"),
             method="POST",
             body=None,
-            params=None,
+            params={"action": "startall"},
             classification=ToolClass.DESTRUCTIVE_WRITE,
             env_id=env_id,
             agent_token=agent_token,
@@ -182,10 +192,10 @@ def register(mcp: FastMCP) -> None:
         token = get_token_store().create(
             action="start_stopped_containers",
             target=f"system:{env_id}",
-            endpoint=f"/api/environments/{env_id}/system/containers/start-stopped",
+            endpoint=api_path(env_id, "system", "containers"),
             method="POST",
             body=None,
-            params=None,
+            params={"action": "startstopped"},
             classification=ToolClass.DESTRUCTIVE_WRITE,
             env_id=env_id,
             agent_token=agent_token,
@@ -208,10 +218,10 @@ def register(mcp: FastMCP) -> None:
         token = get_token_store().create(
             action="stop_all_containers",
             target=f"system:{env_id}",
-            endpoint=f"/api/environments/{env_id}/system/containers/stop-all",
+            endpoint=api_path(env_id, "system", "containers"),
             method="POST",
             body=None,
-            params=None,
+            params={"action": "stopall"},
             classification=ToolClass.DESTRUCTIVE_WRITE,
             env_id=env_id,
             agent_token=agent_token,

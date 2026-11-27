@@ -40,6 +40,21 @@ def require_client() -> httpx.AsyncClient:
     return client
 
 
+def api_path(env_id: str, *segments: str) -> str:
+    """Build a path for the per-environment Arcane API.
+
+    Arcane v3 renamed ``/api/environments/{id}`` to ``/api/agents/{id}`` and kept
+    everything below it. Every tool builds its URLs through this helper so the
+    next rename is one line rather than one per call site.
+
+    >>> api_path("0", "containers", "abc")
+    '/api/agents/0/containers/abc'
+    """
+    base = f"/api/agents/{env_id}"
+    parts = [str(s).strip("/") for s in segments if s is not None and str(s).strip("/")]
+    return base if not parts else base + "/" + "/".join(parts)
+
+
 def _build_headers(agent_token: str | None = None) -> dict[str, str]:
     """Add X-Arcane-Agent-Token header if provided (``env:NAME`` references are resolved)."""
     headers: dict[str, str] = {}
