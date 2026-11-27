@@ -67,7 +67,10 @@ def register(mcp: FastMCP) -> None:
         if stored_resource_hash is not None:
             try:
                 client = require_client()
-                inspect_endpoint = entry.get("inspect_endpoint", entry["endpoint"].rstrip("/"))
+                # v3 puts lifecycle verbs in query parameters (?action=...), so an
+                # inspection is always a GET of the bare resource path.
+                inspect_endpoint = entry.get("inspect_endpoint") or entry["endpoint"]
+                inspect_endpoint = inspect_endpoint.split("?", 1)[0].rstrip("/") or "/"
                 inspect_resp = await client.get(
                     inspect_endpoint,
                     headers=_build_headers(entry.get("agent_token")),

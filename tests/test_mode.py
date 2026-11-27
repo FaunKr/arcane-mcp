@@ -92,7 +92,7 @@ def test_resolve_secret_local_accepts_literal() -> None:
 @pytest.mark.asyncio
 async def test_inspect_container_redacts_env(mcp: Any, httpx_mock: Any, cloud: None) -> None:
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers/c1",
+        url="http://localhost:3552/api/agents/0/containers/c1",
         method="GET",
         json={"id": "c1", "config": {"env": ["SECRET_KEY=abc"]}},
     )
@@ -104,7 +104,7 @@ async def test_inspect_container_redacts_env(mcp: Any, httpx_mock: Any, cloud: N
 async def test_get_project_compose_redacts_env_document(mcp: Any, httpx_mock: Any, cloud: None) -> None:
     """Regression: .env content came back verbatim (HETZNER_API leaked) despite cloud redaction."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/projects/p1/compose",
+        url="http://localhost:3552/api/agents/0/projects/p1/compose",
         method="GET",
         json={
             "success": True,
@@ -139,10 +139,11 @@ async def test_create_registry_rejects_literal_password_in_cloud(mcp: Any, cloud
 @pytest.mark.asyncio
 async def test_create_registry_env_reference(mcp: Any, httpx_mock: Any, monkeypatch: pytest.MonkeyPatch, cloud: None) -> None:
     monkeypatch.setenv("GHCR_PW", "real-pw")
-    httpx_mock.add_response(url="http://localhost:3552/api/container-registries", method="POST", json={"id": "r1", "password": "real-pw"})
+    httpx_mock.add_response(url="http://localhost:3552/api/registries", method="POST", json={"id": "r1", "token": "real-pw"})
     result = await call_tool(mcp, "create_registry", name="r", url="ghcr.io", username="me", password="env:GHCR_PW")
-    assert json.loads(httpx_mock.get_requests()[0].content)["password"] == "real-pw"
-    assert result == {"id": "r1", "password": REDACTED}
+    # v3 renamed the write-only credential field password -> token
+    assert json.loads(httpx_mock.get_requests()[0].content)["token"] == "real-pw"
+    assert result == {"id": "r1", "token": REDACTED}
 
 
 # ── newly gated writes and hash consistency ───────────────────────────
@@ -152,7 +153,6 @@ async def test_create_registry_env_reference(mcp: Any, httpx_mock: Any, monkeypa
 @pytest.mark.parametrize(
     ("tool", "kwargs"),
     [
-        ("upload_to_volume", {"name": "v", "path": "/a.txt", "content": "hi"}),
         ("build_image", {"dockerfile_content": "FROM alpine", "tag": "t"}),
         ("update_environment", {"env_id": "0", "name": "n"}),
     ],
@@ -166,9 +166,8 @@ async def test_risky_writes_need_confirmation(mcp: Any, tool: str, kwargs: dict[
 @pytest.mark.parametrize(
     ("tool", "kwargs", "method", "url"),
     [
-        ("remove_volume", {"name": "v"}, "DELETE", "http://localhost:3552/api/environments/0/volumes/v"),
-        ("remove_network", {"network_id": "n"}, "DELETE", "http://localhost:3552/api/environments/0/networks/n"),
-        ("delete_volume_file", {"name": "v", "path": "/x"}, "DELETE", "http://localhost:3552/api/environments/0/volumes/v/browse?path=%2Fx"),
+        ("remove_volume", {"name": "v"}, "DELETE", "http://localhost:3552/api/agents/0/volumes/v?force=false"),
+        ("remove_network", {"network_id": "n"}, "DELETE", "http://localhost:3552/api/agents/0/networks/n"),
     ],
 )
 async def test_returned_hash_confirms(mcp: Any, httpx_mock: Any, tool: str, kwargs: dict[str, Any], method: str, url: str) -> None:
@@ -177,3 +176,25 @@ async def test_returned_hash_confirms(mcp: Any, httpx_mock: Any, tool: str, kwar
     proposal = await call_tool(mcp, tool, **kwargs)
     result = await call_tool(mcp, "confirm_operation", token=proposal["confirmation_token"], operation_hash=proposal["operation_hash"])
     assert result == {"ok": True}
+
+
+# ── v3 gaps: tools that no longer have a working endpoint ─────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "kwargs"),
+    [
+        ("upload_to_volume", {"name": "v", "path": "/a.txt", "content": "hi"}),
+        ("delete_volume_file", {"name": "v", "path": "/x"}),
+        ("exec_in_container", {"container_id": "c1", "command": "ls"}),
+        ("get_container_stats", {"container_id": "c1"}),
+    ],
+)
+async def test_v3_gaps_return_clear_errors(mcp: Any, httpx_mock: Any, tool: str, kwargs: dict[str, Any]) -> None:
+    """Endpoints removed in Arcane v3 must fail loudly, not silently send a bad request."""
+    result = await call_tool(mcp, tool, **kwargs)
+    assert "error" in result
+    assert "v3" in result["error"].lower() or "not available" in result["error"].lower()
+    assert "confirmation_token" not in result
+    assert httpx_mock.get_requests() == []

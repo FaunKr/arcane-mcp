@@ -15,7 +15,7 @@ from tests.conftest import call_tool, propose_and_confirm
 async def test_list_containers(mcp: Any, httpx_mock: Any) -> None:
     """List containers returns parsed JSON."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers?all=false",
+        url="http://localhost:3552/api/agents/0/containers?all=false",
         method="GET",
         json=[{"id": "c1", "name": "web", "status": "running"}],
     )
@@ -27,7 +27,7 @@ async def test_list_containers(mcp: Any, httpx_mock: Any) -> None:
 async def test_list_containers_all(mcp: Any, httpx_mock: Any) -> None:
     """list_containers passes the all flag."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers?all=true",
+        url="http://localhost:3552/api/agents/0/containers?all=true",
         method="GET",
         json=[],
     )
@@ -51,7 +51,7 @@ async def test_list_containers_http_error(mcp: Any, httpx_mock: Any) -> None:
 async def test_inspect_container(mcp: Any, httpx_mock: Any) -> None:
     """inspect_container returns container details."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers/c1",
+        url="http://localhost:3552/api/agents/0/containers/c1",
         method="GET",
         json={"id": "c1", "name": "web", "config": {}},
     )
@@ -66,7 +66,7 @@ async def test_inspect_container(mcp: Any, httpx_mock: Any) -> None:
 async def test_start_container(mcp: Any, httpx_mock: Any) -> None:
     """start_container posts to the start endpoint."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers/c1/start",
+        url="http://localhost:3552/api/agents/0/containers/c1?action=start",
         method="POST",
         json={"message": "started"},
     )
@@ -78,7 +78,7 @@ async def test_start_container(mcp: Any, httpx_mock: Any) -> None:
 async def test_stop_container(mcp: Any, httpx_mock: Any) -> None:
     """stop_container posts with timeout."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers/c1/stop",
+        url="http://localhost:3552/api/agents/0/containers/c1?action=stop",
         method="POST",
         json={"message": "stopped"},
     )
@@ -90,7 +90,7 @@ async def test_stop_container(mcp: Any, httpx_mock: Any) -> None:
 async def test_restart_container(mcp: Any, httpx_mock: Any) -> None:
     """restart_container posts with timeout."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers/c1/restart",
+        url="http://localhost:3552/api/agents/0/containers/c1?action=restart",
         method="POST",
         json={"message": "restarted"},
     )
@@ -114,7 +114,7 @@ async def test_remove_container_needs_confirm(mcp: Any, httpx_mock: Any) -> None
 async def test_remove_container_confirmed(mcp: Any, httpx_mock: Any) -> None:
     """remove_container executes once confirmed."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers/c1?force=false",
+        url="http://localhost:3552/api/agents/0/containers/c1?force=false",
         method="DELETE",
         json={"message": "removed"},
     )
@@ -129,7 +129,7 @@ async def test_remove_container_confirmed(mcp: Any, httpx_mock: Any) -> None:
 async def test_create_container(mcp: Any, httpx_mock: Any) -> None:
     """create_container posts with image and name."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers",
+        url="http://localhost:3552/api/agents/0/containers",
         method="POST",
         json={"id": "new-container"},
     )
@@ -141,15 +141,12 @@ async def test_create_container(mcp: Any, httpx_mock: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_exec_in_container(mcp: Any, httpx_mock: Any) -> None:
-    """exec_in_container sends command payload."""
-    httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers/c1/exec",
-        method="POST",
-        json={"output": "hello world"},
-    )
+async def test_exec_in_container_reports_v3_gap(mcp: Any, httpx_mock: Any) -> None:
+    """Arcane v3 has no container exec endpoint, so the tool reports the gap without calling the API."""
     result = await call_tool(mcp, "exec_in_container", container_id="c1", command="echo hello")
-    assert result == {"output": "hello world"}
+    assert "not available in Arcane v3" in result["error"]
+    assert result["container_id"] == "c1"
+    assert httpx_mock.get_requests() == []
 
 
 # ── get_container_logs ────────────────────────────────────────────────
@@ -159,7 +156,7 @@ async def test_exec_in_container(mcp: Any, httpx_mock: Any) -> None:
 async def test_get_container_logs(mcp: Any, httpx_mock: Any) -> None:
     """get_container_logs uses the logs/download endpoint and returns raw text."""
     httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers/c1/logs/download?tail=100",
+        url="http://localhost:3552/api/agents/0/containers/c1/logs/download?tail=100",
         method="GET",
         text="line1\nline2",
     )
@@ -192,7 +189,7 @@ async def test_run_command_requires_context(mcp: Any, httpx_mock: Any) -> None:
 @pytest.mark.asyncio
 async def test_run_command_inherits_image_binds_and_network(mcp: Any, httpx_mock: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """run_command borrows image/mounts/network from the target container and cleans up."""
-    base = "http://localhost:3552/api/environments/0/containers"
+    base = "http://localhost:3552/api/agents/0/containers"
     httpx_mock.add_response(
         url=f"{base}/caddy-caddy-1",
         method="GET",
@@ -210,7 +207,7 @@ async def test_run_command_inherits_image_binds_and_network(mcp: Any, httpx_mock
         },
     )
     httpx_mock.add_response(url=base, method="POST", json={"data": {"id": "exec1"}})
-    httpx_mock.add_response(url=f"{base}/exec1/start", method="POST", json={"ok": True})
+    httpx_mock.add_response(url=f"{base}/exec1?action=start", method="POST", json={"ok": True})
     httpx_mock.add_response(
         url=f"{base}/exec1",
         method="GET",
@@ -245,15 +242,12 @@ async def test_run_command_inherits_image_binds_and_network(mcp: Any, httpx_mock
 
 
 @pytest.mark.asyncio
-async def test_get_container_stats(mcp: Any, httpx_mock: Any) -> None:
-    """get_container_stats fetches resource stats."""
-    httpx_mock.add_response(
-        url="http://localhost:3552/api/environments/0/containers/c1/stats",
-        method="GET",
-        json={"cpu": 0.5, "memory": 1048576},
-    )
+async def test_get_container_stats_reports_v3_gap(mcp: Any, httpx_mock: Any) -> None:
+    """Arcane v3 dropped the container stats endpoint; the tool reports the gap without calling the API."""
     result = await call_tool(mcp, "get_container_stats", container_id="c1")
-    assert result["cpu"] == 0.5
+    assert "not available in Arcane v3" in result["error"]
+    assert result["container_id"] == "c1"
+    assert httpx_mock.get_requests() == []
 
 
 # ── run_command output cleanup ─────────────────────────────────────────
